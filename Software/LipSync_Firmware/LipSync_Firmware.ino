@@ -122,9 +122,9 @@ int BUTTON_MAPPING[INPUT_ACTION_COUNT] =
 
 //***DON'T CHANGE THESE CONSTANTS***//
 #define XHIGH_DIRECTION 1                         // Mouthpiece right movements correspond to positive (i.e. right) mouse movement
-#define XLOW_DIRECTION -1                         // Mouthpiece left movements correspond to negative (i.e. left) mouse movement
+#define XLOW_DIRECTION  -1                        // Mouthpiece left movements correspond to negative (i.e. left) mouse movement
 #define YHIGH_DIRECTION -1                        // Mouthpiece up movements correspond to negative (i.e. up) mouse movement
-#define YLOW_DIRECTION 1                          // Mouthpiece down movements correspond to positive (i.e. down) mouse movement
+#define YLOW_DIRECTION  1                         // Mouthpiece down movements correspond to positive (i.e. down) mouse movement
 
 //*** DEVELOPER CONSTANTS***// - Only change if you know what you're doing.
 #define DEBUG_MODE false                          // Enable debug information to serial output (Default: false)
@@ -278,8 +278,8 @@ int g_actionButton[INPUT_ACTION_COUNT];                // Sip & Puff action mapp
 
 int g_rotationAngle = ROTATION_ANGLE;                  // Rotation angle variable (degrees)
 float g_rotationAngle11;                               // Rotation matrix components
-float g_rotationAngle12;
-float g_rotationAngle21;
+float g_rotationAngle12;                               // Currently a float, though with only 4 angles 
+float g_rotationAngle21;                               //  the values are only 1, -1 or 0 
 float g_rotationAngle22;
 
 byte g_cursorSpeedCounter;                             // Variable to track current cursor speed level
@@ -2241,7 +2241,7 @@ void setRotationAngle(bool responseEnabled, bool apiEnabled, int* inputRotationA
 void updateRotationAngle(void)
 { 
   // Set rotation angle components based on global rotation angle
-  // Currently limited to 4 cadrinal 
+  // Currently limited to 4 cardinal directions - 0, 90, 180, 270
   switch(g_rotationAngle) 
   {
     case 90:
@@ -2252,7 +2252,7 @@ void updateRotationAngle(void)
       g_rotationAngle22 = 0;
       break;
     }
-    case 180:s
+    case 180:
     {
       g_rotationAngle11 = -1;
       g_rotationAngle12 = 0;
