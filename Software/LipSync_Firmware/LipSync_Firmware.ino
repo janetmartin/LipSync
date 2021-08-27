@@ -59,7 +59,7 @@
 #define OUTPUT_MIDDLE_CLICK       (int)5             // Generates a short middle click
 #define OUTPUT_CURSOR_HOME_RESET  (int)6             // Initiates the cursor home reset routine to reset center position. 
 #define OUTPUT_CURSOR_CALIBRATION (int)7             // Initiates the cursor calibration to calibrate joystick range and reset center position.
-#define OUTPUT_SECONDARY_SCROLL   (int)8             // Initiates secondary scroll mode. This action is performed by press and holding mouse middle button.
+//#define OUTPUT_SECONDARY_SCROLL   (int)8             // Initiates secondary scroll mode. This action is performed by press and holding mouse middle button.
 
 //***OUTPUT MAPPING***// - CUSTOMIZABLE
 //These values can be changed to remap different output actions to different input actions
@@ -80,10 +80,10 @@
 
 #define PUFF_PRESSURE_THRESHOLD_DEFAULT (byte)10  // Pressure sip and puff threshold [percentage]
 #define SIP_PRESSURE_THRESHOLD_DEFAULT  (byte)10  // Pressure sip and puff threshold [percentage]
-#define PUFF_COUNT_THRESHOLD_MED 150              // Threshold between short and medium puff input [cycle counts]
-#define PUFF_COUNT_THRESHOLD_LONG 750             // Threshold between medium and long puff [cycle counts]
-#define SIP_COUNT_THRESHOLD_MED 150               // Threshold between short and medium puff input [cycle counts]
-#define SIP_COUNT_THRESHOLD_LONG 750              // Threshold between medium and long puff in [cycle counts]
+#define PUFF_COUNT_THRESHOLD_MED 1000             // Threshold between short and medium puff input [cycle counts]
+#define PUFF_COUNT_THRESHOLD_LONG 3000            // Threshold between medium and long puff [cycle counts]
+#define SIP_COUNT_THRESHOLD_MED 1000              // Threshold between short and medium puff input [cycle counts]
+#define SIP_COUNT_THRESHOLD_LONG 3000             // Threshold between medium and long puff in [cycle counts]
 
 #define CURSOR_DEFAULT_SPEED 30                   // Default USB cursor speed [pixels/update]
 #define SPEED_COUNTER (byte)5                     // Default cursor speed level
@@ -207,7 +207,6 @@ _functionList getPuffThresholdFunction =        {"PT,0", 0, &getPuffThreshold};
 _functionList setPuffThresholdFunction =        {"PT,1", 1,  &setPuffThreshold};
 _functionList getSipThresholdFunction =         {"ST,0", 0, &getSipThreshold};
 _functionList setSipThresholdFunction =         {"ST,1", 1,  &setSipThreshold};
-_functionList getPressureValueFunction =        {"PV,0", 0, &getPressureValue};
 _functionList getRotationAngleFunction =        {"RA,0", 0, &getRotationAngle};
 _functionList setRotationAngleFunction =        {"RA,1", 1,  &setRotationAngle};
 _functionList getJoystickValueFunction =        {"JV,0", 0, &getJoystickValue};
@@ -226,7 +225,7 @@ _functionList setScrollLevelFunction =          {"SL,1", 1,  &setScrollLevel};
 _functionList factoryResetFunction =            {"FR,1", 1,  &factoryReset};
 
 // Declare array of API functions
-_functionList apiFunction[25] =
+_functionList apiFunction[24] =
 {
   getModelNumberFunction,
   getVersionNumberFunction,
@@ -236,7 +235,6 @@ _functionList apiFunction[25] =
   setPuffThresholdFunction,
   getSipThresholdFunction,
   setSipThresholdFunction,
-  getPressureValueFunction,
   getRotationAngleFunction,
   setRotationAngleFunction,
   getJoystickValueFunction,
@@ -322,7 +320,10 @@ float xLowComp = 1.0;
 
 bool g_debugModeEnabled;                               // Declare debug enable variable
 bool g_settingsEnabled = false;                        // Serial input settings command mode enabled or disabled
-bool scrollModeEnabled = false;                        // Declare scroll mode enable variable
+bool g_ScrollModeEnabled = false;                        // Declare scroll mode enable variable
+
+unsigned long g_PreviousActionTime = 0;
+unsigned int g_previousActionState = 0;
 
 //-----------------------------------------------------------------------------------//
 
@@ -465,13 +466,13 @@ void cursorHandler(void)
   // Apply rotation to cursor movement based on mounting angle.
   rotateCursor(xCursor, yCursor); 
 
-  if (outputMouse && !scrollModeEnabled) 
+  if (outputMouse && !g_ScrollModeEnabled) 
   { // Normal Mouse output
     moveCursor(xCursor, yCursor, 0); // Output mouse command
     delay(CURSOR_DELAY);
     g_pollCounter = 0; // Reset cursor poll counter
   }
-  else if (outputMouse && scrollModeEnabled) //Scroll 
+  else if (outputMouse && g_ScrollModeEnabled) //Scroll 
   { // Scroll mode
     int yScroll = scrollModifier(yCursor, g_cursorMaxSpeed, g_cursorScrollLevel);
     moveCursor(0, 0, yScroll);
@@ -1279,46 +1280,6 @@ void setSipThreshold(bool responseEnabled, bool apiEnabled, int* inputSipThresho
 {
   setSipThreshold(responseEnabled, apiEnabled, inputSipThreshold[0]);
 }
-
-
-//***GET PRESSURE VALUE FUNCTION***//
-// Function   : getPressureValue
-//
-// Description: This function returns pressure value in steps [0-1023].
-//
-// Parameters :  responseEnabled : bool : The response for serial printing is enabled if it's set to true.
-//                                        The serial printing is ignored if it's set to false.
-//               apiEnabled : bool : The API response is sent if it's set to true.
-//                                   Manual response is sent if it's set to false.
-//
-// Return     : void
-//*********************************//
-void getPressureValue(bool responseEnabled, bool apiEnabled)
-{
-  int tempPressureValue = readPressure();
-  printResponseSingle(responseEnabled, apiEnabled, true, 0, "PV,0", true, tempPressureValue);
-}
-
-
-//***GET PRESSURE VALUE API FUNCTION***//
-// Function   : getPressureValue
-//
-// Description: This function is redefinition of main getPressureValue function to match the types of API function arguments.
-//
-// Parameters :  responseEnabled : bool : The response for serial printing is enabled if it's set to true.
-//                                        The serial printing is ignored if it's set to false.
-//               apiEnabled : bool : The API response is sent if it's set to true.
-//                                   Manual response is sent if it's set to false.
-//               optionalArray : int* : The array of int which should contain one element with value of zero.
-//
-// Return     : void
-void getPressureValue(bool responseEnabled, bool apiEnabled, int* optionalArray) {
-  if (optionalArray[0] == 0)
-  {
-    getPressureValue(responseEnabled, apiEnabled);
-  }
-}
-
 
 //***GET JOYSTICK VALUE FUNCTION***//
 // Function   : getJoystickValue
@@ -2960,78 +2921,72 @@ void pushButtonHandler()
 //*********************************//
 void sipAndPuffHandler()
 {
+  unsigned long currentActionTime = millis();
+  unsigned long diffActionTime = 0;
   // Read pressure sensor for sip and puff functions
   g_cursorPressure = readPressure();   // [ADC steps]
 
-  // Puff handling: check if the pressure is under puff pressure threshold and measure how long until it is released
-  if (g_cursorPressure < g_puffThreshold)
-  { //Puff detected
-
-    while (g_cursorPressure < g_puffThreshold) // Continue measuring pressure until puff stops
-    {
-      g_cursorPressure = readPressure();
-      g_puffCount++;                                // Count number of cycles pressure value has been under puff pressure threshold
-      if (g_puffCount == PUFF_COUNT_THRESHOLD_MED) // When first count threshold is reached, turn on light
-      {
-        ledOn(2); // Turn on RED LED
-      }
-      else if (g_puffCount == PUFF_COUNT_THRESHOLD_LONG) // When second count threshold is reached, turn off light
-      {
-        ledClear(); // Turn off RED LED
-      }
-      delay(PRESSURE_HANDLER_DELAY);
-    } // end puff measurement
-
-    // USB puff actions
-    if (g_puffCount < PUFF_COUNT_THRESHOLD_MED)
+  if (g_cursorPressure >= g_puffThreshold && g_cursorPressure <= g_sipThreshold)
+  {
+    diffActionTime = currentActionTime - g_PreviousActionTime;
+    if (diffActionTime < PUFF_COUNT_THRESHOLD_MED && g_previousActionState ==1)
     {
       performButtonAction(g_actionButton[0]); // Perform Short puff action
     }
-    else if (g_puffCount >= PUFF_COUNT_THRESHOLD_MED && g_puffCount < PUFF_COUNT_THRESHOLD_LONG)
+    else if (diffActionTime >= PUFF_COUNT_THRESHOLD_MED && diffActionTime < PUFF_COUNT_THRESHOLD_LONG && g_previousActionState ==1)
     {
       performButtonAction(g_actionButton[2]); // Perform long puff action
     }
-    else if (g_puffCount >= PUFF_COUNT_THRESHOLD_LONG)
+    else if (diffActionTime >= PUFF_COUNT_THRESHOLD_LONG && g_previousActionState ==1)
     {
       performButtonAction(g_actionButton[4]); // Perform very long puff action
-    }
-    g_puffCount = 0;                                //Reset puff counter
-  }
+    }    
 
-  // Sip handling: check if the pressure is above sip pressure threshold and measure how long until it is released
-  if (g_cursorPressure > g_sipThreshold)
-  {
-    // Sip detected
-    while (g_cursorPressure > g_sipThreshold)
-    { // Continue measuring pressure until sip stops
-      g_cursorPressure = readPressure();
-      g_sipCount++;                                 // Count how long the pressure value has been above sip pressure threshold
-      if (g_sipCount == SIP_COUNT_THRESHOLD_MED) // When first count threshold is reached, turn on light
-      {
-        ledOn(1); //Turn on green led
-      }
-      else if (g_sipCount == SIP_COUNT_THRESHOLD_LONG) // When second count threshold is reached, turn off light
-      {
-        ledClear(); // Turn off LEDs.
-      }
-      delay(PRESSURE_HANDLER_DELAY);
-    }
-
-    //USB Sip actions
-    if (g_sipCount < SIP_COUNT_THRESHOLD_MED)
+    if (diffActionTime < SIP_COUNT_THRESHOLD_MED && g_previousActionState ==2)
     {
       performButtonAction(g_actionButton[1]); // Perform short sip action
     }
-    else if (g_sipCount >= SIP_COUNT_THRESHOLD_MED && g_sipCount < SIP_COUNT_THRESHOLD_LONG)
+    else if (diffActionTime >= SIP_COUNT_THRESHOLD_MED && diffActionTime < SIP_COUNT_THRESHOLD_LONG && g_previousActionState ==2)
     {
       performButtonAction(g_actionButton[3]); // Perform long sip action
     }
-    else if (g_sipCount >= SIP_COUNT_THRESHOLD_LONG)
+    else if (diffActionTime >= SIP_COUNT_THRESHOLD_LONG && g_previousActionState ==2)
     {
       //Perform seconday function if sip counter value is more than 750 ( 5 second Long Sip )
       performButtonAction(g_actionButton[5]); // Perform very long sip action
     }
-    g_sipCount = 0;                                 // Reset sip counter
+    g_previousActionState=0;
+    g_PreviousActionTime = currentActionTime;
+  }   // Puff handling: check if the pressure is under puff pressure threshold and measure how long until it is released
+  else if (g_cursorPressure < g_puffThreshold)
+  { //Puff detected
+      diffActionTime = currentActionTime - g_PreviousActionTime;
+      // Count number of cycles pressure value has been under puff pressure threshold
+      if (diffActionTime >= PUFF_COUNT_THRESHOLD_LONG) // When second count threshold is reached, turn off light
+      {
+        ledClear(); // Turn off RED LED
+      }
+      else if (diffActionTime >= PUFF_COUNT_THRESHOLD_MED) // When first count threshold is reached, turn on light
+      {
+        ledOn(2); // Turn on RED LED
+      }
+      g_previousActionState=1;
+      delay(PRESSURE_HANDLER_DELAY);
+    } // Sip handling: check if the pressure is above sip pressure threshold and measure how long until it is released
+  else if (g_cursorPressure > g_sipThreshold)
+  {
+      diffActionTime = currentActionTime - g_PreviousActionTime;
+      // Sip detected                              // Count how long the pressure value has been above sip pressure threshold
+      if (diffActionTime >= SIP_COUNT_THRESHOLD_LONG) // When second count threshold is reached, turn off light
+      {
+        ledClear(); // Turn off LEDs.
+      }
+      else if (diffActionTime >= SIP_COUNT_THRESHOLD_MED) // When first count threshold is reached, turn on light
+      {
+        ledOn(1); //Turn on green led
+      }
+      g_previousActionState=2;
+      delay(PRESSURE_HANDLER_DELAY);
   } // end sip handling
 }
 
@@ -3089,13 +3044,13 @@ void performButtonAction(byte outputAction)
   if (Mouse.isPressed(MOUSE_LEFT)
       || Mouse.isPressed(MOUSE_MIDDLE)
       || Mouse.isPressed(MOUSE_RIGHT)
-      || scrollModeEnabled)
+      || g_ScrollModeEnabled)
   {
     ledClear();
     Mouse.release(MOUSE_LEFT);
     Mouse.release(MOUSE_MIDDLE);
     Mouse.release(MOUSE_RIGHT);
-    scrollModeEnabled = false;
+    g_ScrollModeEnabled = false;
   }
   else
   {
@@ -3281,15 +3236,15 @@ void cursorDrag(void)
 //****************************************//
 void cursorScroll(void)
 {
-  if (scrollModeEnabled)
+  if (g_ScrollModeEnabled)
   {
-    scrollModeEnabled = false;
+    g_ScrollModeEnabled = false;
     ledClear();
   }
   else
   {
     //ledOn(1); // Turn on Green LED
-    scrollModeEnabled = true;
+    g_ScrollModeEnabled = true;
     delay(ACTION_HOLD_DELAY);
   }
 }
