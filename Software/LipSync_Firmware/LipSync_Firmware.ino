@@ -320,7 +320,7 @@ float xLowComp = 1.0;
 
 bool g_debugModeEnabled;                               // Declare debug enable variable
 bool g_settingsEnabled = false;                        // Serial input settings command mode enabled or disabled
-bool g_ScrollModeEnabled = false;                        // Declare scroll mode enable variable
+bool g_scrollModeEnabled = false;                        // Declare scroll mode enable variable
 
 unsigned long g_PreviousActionTime = 0;
 unsigned int g_previousActionState = 0;
@@ -466,13 +466,13 @@ void cursorHandler(void)
   // Apply rotation to cursor movement based on mounting angle.
   rotateCursor(xCursor, yCursor); 
 
-  if (outputMouse && !g_ScrollModeEnabled) 
+  if (outputMouse && !g_scrollModeEnabled) 
   { // Normal Mouse output
     moveCursor(xCursor, yCursor, 0); // Output mouse command
     delay(CURSOR_DELAY);
     g_pollCounter = 0; // Reset cursor poll counter
   }
-  else if (outputMouse && g_ScrollModeEnabled) //Scroll 
+  else if (outputMouse && g_scrollModeEnabled) //Scroll 
   { // Scroll mode
     int yScroll = scrollModifier(yCursor, g_cursorMaxSpeed, g_cursorScrollLevel);
     moveCursor(0, 0, yScroll);
@@ -3044,13 +3044,13 @@ void performButtonAction(byte outputAction)
   if (Mouse.isPressed(MOUSE_LEFT)
       || Mouse.isPressed(MOUSE_MIDDLE)
       || Mouse.isPressed(MOUSE_RIGHT)
-      || g_ScrollModeEnabled)
+      || g_scrollModeEnabled)
   {
     ledClear();
     Mouse.release(MOUSE_LEFT);
     Mouse.release(MOUSE_MIDDLE);
     Mouse.release(MOUSE_RIGHT);
-    g_ScrollModeEnabled = false;
+    g_scrollModeEnabled = false;
   }
   else
   {
@@ -3236,15 +3236,15 @@ void cursorDrag(void)
 //****************************************//
 void cursorScroll(void)
 {
-  if (g_ScrollModeEnabled)
+  if (g_scrollModeEnabled)
   {
-    g_ScrollModeEnabled = false;
+    g_scrollModeEnabled = false;
     ledClear();
   }
   else
   {
     //ledOn(1); // Turn on Green LED
-    g_ScrollModeEnabled = true;
+    g_scrollModeEnabled = true;
     delay(ACTION_HOLD_DELAY);
   }
 }
